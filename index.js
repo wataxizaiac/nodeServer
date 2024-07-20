@@ -212,13 +212,13 @@ app.get('/text', async ({ query }, res) => {
     })
 })
 app.get('/openid', async ({ query }, res) => {
-  let dbData = await dbRun('ocrList', 'get', [1040782805]).ocrname
   let id = query.id
+  let dbData = await dbRun('ocrList', 'get', ['ocrId=' + id], 'ocrName')
   console.log(id)
-  if (!dbData) {
+  if (dbData) {
     res.send({
       code: '200',
-      data: { [id]: `${dbData}` }
+      data: { [id]: `${dbData.ocrName}` }
     })
     return false
   }

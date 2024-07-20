@@ -1,4 +1,5 @@
 import axios from 'axios'
+import cloudscraper from 'cloudscraper'
 let instance = axios.create()
 const pending = {}
 const CancelToken = axios.CancelToken
@@ -18,7 +19,7 @@ const getRequestIdentify = (config, isReuest = false) => {
 }
 
 // 请求拦截器
-axios.interceptors.request.use(config => {
+instance.interceptors.request.use(config => {
   // 拦截重复请求(即当前正在进行的相同请求)
   let requestData = getRequestIdentify(config, true)
   removePending(requestData, true)
@@ -33,7 +34,7 @@ axios.interceptors.request.use(config => {
 })
 
 // 异常处理
-axios.interceptors.response.use(response => {
+instance.interceptors.response.use(response => {
   // 把已经完成的请求从 pending 中移除
   let requestData = getRequestIdentify(response.config)
   removePending(requestData)
@@ -96,25 +97,23 @@ axios.interceptors.response.use(response => {
   return Promise.reject(err)
 })
 
-axios.defaults.baseURL = 'http://localhost:3000/'
+// axios.defaults.baseURL = 'http://localhost:3000/'
 
-export default instance = (method, data) => {
+export default (data) => {
+  console.log('!!!!!!!!' + data)
   const http = "https://banzhu99999.com"
   var _params = {
-    method: !method ? 'get' : method.toLowerCase(),
+    method: 'get',
     url: http + data,
+    encoding: null,
     headers: {
       'User-Agent': 'Mozilla/5.0 (iPhone CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/126.0.0.0',
-    },
-    responseType: 'arraybuffer'
-  }
-  if (_params.method === 'get') {
-    _params.params = data?.params || {}
-  } else {
-    _params.data = data.params || {}
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+      'Referer': 'https://banzhu99999.com/'
+    }
   }
   return new Promise((resolve, reject) => {
-    axios(_params).then(response => {
+    cloudscraper(_params).then(response => {
       resolve(response)
     }).catch(error => {
       reject(error)

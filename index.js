@@ -16,9 +16,11 @@ const dbRun = (table, method, code, data) => {
   let Sqr
   switch (method) {
     case 'run': Sqr = `INSERT INTO ${table} VALUES(${code})`
-      break;
-    case 'get': case 'all': Sqr = `SELECT ${data} FROM ${table} WHERE ${code}`
-      break;
+      break
+    case 'get': Sqr = `SELECT ${data} FROM ${table} WHERE ${code}`
+      break
+    case 'all': Sqr = `SELECT ${data} FROM ${table}  ${code}`
+      break
     default:
   }
   // console.log(Sqr)
@@ -122,93 +124,106 @@ app.get('/text', async ({ query }, res) => {
     return '/'
   })
   let url = rep + path + '_'
-  let dbData = await dbRun('pathRes', 'all', ['parent_id=' + path], 'resData')
+  let dbData = await dbRun('pathRes', 'all', ['WHERE parent_id=' + path], 'resData')
   if (dbData.length) {
-    let is = true, text
-    dbData.forEach(({ resData }, i) => {
-      if (resData?.length > 20) {
-        resData = iconvLite.decode(resData, 'gbk')
-        text += resData
+    let text
+    if (dbData.length !== 1) {
+      let is = true
+      let errList = []
+      for (let i = 0; i < dbData.length; i++) {
+        let resData = dbData[i].resData
+        if (resData) {
+          resData = iconvLite.decode(resData, 'gbk')
+          text += resData
+        }
+        else {
+          is = false
+          await axios(`${url + (i + 1) + '.html'}`)
+            .then(buffer => {
+              if (buffer) {
+                buffer = iconvLite.decode(buffer, 'gbk')
+                text += buffer
+                is = true
+              }
+            })
+            .catch(err => { console.log(err) })
+        }
+      }
+      if (is) {
+        // text = iconvLite.encode(text, 'gbk')
+        const stmt = db.prepare("INSERT OR REPLACE INTO pathRes VALUES (?,?,?)")
+        stmt.run(path, 'all', text)
+        stmt.finalize()
+        db.run(`UPDATE resText SET nameTrue = 1 WHERE path = ${path}`)
+        console.log(name + '全部请求完成')
       }
       else {
-        is = false
-        console.log(`${url + (i + 1) + '.html'}`)
-        axios('get', `${url + i + '.html'}`)
-          .then(buffer => {
-            if (buffer.length > 20) {
-              buffer = iconvLite.decode(resData, 'gbk')
-              console.log(buffer)
-              text += buffer
-              is = true
-            }
-          })
-          .catch(err => { })
+        console.log(name + '请求不全')
       }
-    })
-    if (is) {
-      res.send(text)
-      db.run(`UPDATE resText SET nameTrue = 1 WHERE path = ${path}`)
-      console.log('last' + name + '全部请求完成')
-
     }
     else {
-      console.log(name + '请求不全')
+      text = iconvLite.decode(dbData[0].resData, 'gbk')
     }
+    res.send(text)
     return false
   }
   console.log("第一次加载")
   dbRun('resText', 'run', [path, `"${name}"`, 0])
-  // let text = iconvLite.decode(res.data, 'gbk')
-  axios('get', id)
+  axios(id)
     .then(buffer => {
-      let text = iconvLite.decode(buffer.data, 'gbk')
-      if (text.length > 20) {
+      let text = iconvLite.decode(buffer, 'gbk')
+      if (text) {
         let length = text.split(path + '_').length - 1
         if (length == 1) {
           res.send(text)
-          dbRun('pathRes', 'run', [path, path, `'${buffer.data}'`])
+          dbRun('pathRes', 'run', [path, path, `'${buffer}'`])
           return false
         }
         let is = true
         let all = []
         for (let i = 2; i <= length; i++) {
-          all.push(axios('get', `${url + i + '.html'}`))
+          all.push(axios(`${url + i + '.html'}`))
         }
         Promise.allSettled(all)
           .then(arr => {
-            const stmt = db.prepare("INSERT OR REPLACE INTO pathRes VALUES (?,?,?)", (err) => {
-              console.log(err)
-            })
-            stmt.run(path, path, buffer.data)
-            arr.forEach((item, index) => {
-              let i = path + '_' + (index + 2)
-              stmt.run(path, i, item?.value?.data)
-              console.log(i)
-              if (item?.value?.data.length > 20) {
-                let data = iconvLite.decode(item?.value?.data, 'gbk')
+            const stmt = db.prepare("INSERT OR REPLACE INTO pathRes VALUES (?,?,?)")
+            let errList = []
+            for (let i = 0; i < arr.length; i++) {
+              let index = path + '_' + (i + 2)
+              if (arr[i].value) {
+                let data = iconvLite.decode(arr[i].value, 'gbk')
                 text += data
               }
               else {
+                errList[i] = index
                 is = false
               }
-            })
-            stmt.finalize()
+            }
             if (is) {
               res.send(text)
+              text = iconvLite.encode(text, 'gbk')
+              stmt.run(path, 'all', text)
+              stmt.finalize()
               db.run(`UPDATE resText SET nameTrue = 1 WHERE path = ${path}`)
               console.log(name + '全部请求完成')
             }
             else {
-              console.log(name + '请求不全')
+              stmt.run(path, path, buffer)
+              arr.forEach((item, index => {
+                stmt.run(path, index, item.value)
+              }))
+              stmt.finalize()
+              console.log(errList + '请求不全')
             }
           })
+          .catch(err => { console.log(err) })
       }
       else {
         res.send('第一页请求失败')
       }
     })
     .catch(err => {
-      // console.log(err)
+      console.log(err)
     })
 })
 app.get('/openid', async ({ query }, res) => {
@@ -287,7 +302,10 @@ app.get('/openid', async ({ query }, res) => {
     })
   })
 })
-
+app.get('/html', async ({ query }, res) => {
+  let dbData = await dbRun('resText', 'all', [], '*')
+  res.send(dbData)
+})
 app.listen(3000, function () {
   console.log('server start: http://127.0.0.1:3000')
 })
